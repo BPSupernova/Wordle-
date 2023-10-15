@@ -1,0 +1,114 @@
+/**
+ * ApplyWithLinkedIn Widget Extension.
+ * This javascript will be loaded on third party websites.
+ *
+ * - Initializes and loads xdoor iframe on third party website
+ * - Handle cross domain communication
+ *
+ * See  {@link http://go/xdoor/docs} for more details
+ *
+ */
+(function (factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    factory()(IN, window, fetch);
+  }
+}(function() {
+  return function (IN, window, fetch) {
+    IN.tags.add('AwliWidget', function applyWithLinkedIn(node, core) {
+      let tag = new IN.SDK.Tag(node, core);
+
+      // Validate client parameters
+      const {
+        'integration-context': integrationContext,
+        'callback-method': callbackMethod,
+        'company-job-code': companyJobCode,
+        mode,
+        size,
+        color,
+      } = tag.attributes;
+
+      if (!integrationContext) {
+        throw new Error('Apply with LinkedIn widget requires an integration-context');
+      }
+      if (!mode) {
+        throw new Error('Apply with LinkedIn widget requires a mode');
+      }
+      if (!mode.toUpperCase || !['BUTTON_DATA', 'CONVERSION'].includes(mode.toUpperCase())) {
+        throw new Error('Apply with LinkedIn widget requires mode to be either BUTTON_DATA or CONVERSION');
+      }
+      if (!companyJobCode) {
+        throw new Error('Apply with LinkedIn widget requires a company job code');
+      }
+
+      const applyUrl = window && window.location && window.location.href;
+      
+      const widgetParams = Object.assign(
+        {},
+        { apiKey: core.options.get('apiKey') },
+        integrationContext && { integrationContext },
+        mode && { mode },
+        size && { size },
+        color && { color },
+        callbackMethod && { callbackMethod },
+        companyJobCode && { companyJobCode },
+        applyUrl && { applyUrl },
+      );
+
+      let iframe = new IN.SDK.EmbeddedWindow(`${core.options.get('urls.www.linkedin.com')}/talentwidgets/apply-with-linkedin`, {
+        params: widgetParams,
+        attributes: {
+          width: 188,
+          height: 0, // Set the height to 0 so that the resize event from xdoor sets it to correct height
+        },
+        form: true,
+        method: 'POST',
+        refresh: false,
+      });
+
+      const client = new IN.SDK.Client(iframe);
+
+      client.on('awliOAuth', async () => {
+        await IN.user.authorizeV2({scope: 'r_awliprofile'})
+
+        const { profileData, signature } = await IN.api.request('/v2/awliApplicantProfile', {}, IN);
+
+        executeFunctionByName(callbackMethod, window, profileData, signature);
+      });
+
+      tag.insert(iframe.self);
+
+      return tag;
+    });
+
+    /**
+      * helper function for us to call the callback function provided by the client to
+      * handle the message from the widget javascript.
+      *
+      * It takes a name of a method, a context, and invokes the function within the context
+      */
+    function executeFunctionByName(functionName, context /*, args */) {
+      if (!functionName) {
+        return;
+      }
+
+      const args = Array.prototype.slice.call(arguments, 2);
+      const namespaces = functionName.split('.');
+      let func = namespaces.pop();
+      for (let i = 0; i < namespaces.length; i++) {
+          if (!context[namespaces[i]]) {
+            return;
+          }
+
+          context = context[namespaces[i]];
+      }
+
+      if (!context[func]) {
+        return;
+      }
+
+      return context[func].apply(context, args);
+    }
+  }
+}));

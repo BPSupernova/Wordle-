@@ -1,0 +1,318 @@
+(function($){
+  window._csodSetCompany = function (val) {
+    var company = $('[name="empl_current_employer"]');
+    company.val(val);
+    if(company[0]) {
+      validateField(company[0])
+    }
+  }
+
+  function onError() {
+    hidePreloader();
+    var $tpl = $('.apply-application-network-error-content').show().detach();
+    $('[data-lumesse-apply-container]').append($tpl);
+  }
+
+  function onLoad(data) {
+    hidePreloader();
+    checkOBS(data);
+    localStorage.removeItem('lumesseGaFr');
+
+    if (usType) {
+      setValidation();
+      $('#apply-section_dps').hide();
+      $('.lumesse-apply-widget-submit').addClass('fixed-wrapper');
+      $('#communication-preferences-channel-1-EMAIL').prop('checked', true);
+      $('.lumesse-apply-widget-communication-preferences').hide();
+    }
+
+    if (window.company !== undefined) {
+      _csodSetCompany(window.company);
+    }
+
+    var advertLang = data.advertOverview.language;
+
+    if (advertLang === 'fr_FR') {
+      $('[name="dps"] option[value="true"]').text('J\'accepte')
+    } else if (advertLang === 'en_US' || advertLang === 'en_GB') {
+      $('[name="dps"] option[value="true"]').text('I agree')
+    }
+
+    if (usType == false && advertLang === 'fr_FR') {
+      if (data.advertOverview.jobTitle === "Mobilité interne") {
+        $('.apply-application-title-row').html('<span class="apply-application-title-header">Renseigner mon profil pour</span> <span class="apply-application-title-content"> une mobilité interne</span>');
+        localStorage.setItem('lumesseGaFr', 'true');
+      }
+    }
+  }
+
+  function hidePreloader() {
+    $('.apply-preloader').remove();
+  }
+
+  function hideMenuOnSubmit() {
+    $('#apply-nav').remove();
+    $('#apply-content').removeClass('col-lg-offset-3 col-sm-offset-4 col-sm-7');
+  }
+
+  function widgetsLoaded() {
+    return typeof lumesse != 'undefined' || (require && require.specified && require.specified("ApplyInitializer"));
+  }
+
+  function widgetsNamespaced() {
+    return typeof lumesse != 'undefined' && 'require' in lumesse;
+  }
+
+  function overrideLabels(ApplySupport) {
+    ApplySupport.Translations.addLanguageBundle({
+      language: 'fr_FR',
+      translations: {
+        Label_save_app_save: "Enregistrer en brouillon",
+        Label_dps: "Gestion des données personnelles",
+        Label_agree: "J'accepte"
+      }
+    });
+
+    ApplySupport.Translations.addLanguageBundle({
+      language: 'en_US',
+      translations: {
+        Label_agree: "I understand"
+      }
+    });
+
+    ApplySupport.Translations.addLanguageBundle({
+      language: 'en_GB',
+      translations: {
+        Label_agree: "I understand"
+      }
+    });
+
+    ApplySupport.Translations.addLanguageBundle({
+      language: 'pl',
+      translations: {
+        Label_agree: "Potwierdzam",
+        Label_no_agree: "Potwierdź"
+      }
+    });
+
+    ApplySupport.Translations.addLanguageBundle({
+      language: 'pl_PL',
+      translations: {
+        Label_agree: "Potwierdzam",
+        Label_no_agree: "Potwierdź"
+      }
+    });
+  }
+
+  function validateField(el) {
+    if ("createEvent" in document) {
+      var evt = document.createEvent("HTMLEvents");
+      evt.initEvent("change", true, true);
+      el.dispatchEvent(evt);
+    }
+    else {
+      el.fireEvent("onchange");
+    }
+  }
+
+  function setValidation() {
+    $('[aria-describedby="help-block-dps apply-dps-full-text-"]').val('true');
+    $('.apply-dps-type-application .form-control-container:after').hide();
+    var el = $('[aria-describedby="help-block-dps apply-dps-full-text-"]');
+    if (el[0]) {
+      validateField(el[0]);
+    }
+  }
+
+  var usType = false;
+  var frType = false;
+
+  function checkOBS(data) {
+    for (var i = 0; i < data.advertOverview.fields.length; i++) {
+      if (data.advertOverview.fields[i].id === "standard_first_level_department") {
+        switch (data.advertOverview.fields[i].value) {
+
+          case 'United States' :
+            usType = true;
+            break;
+
+          case 'Canada' :
+            usType = true;
+            break;
+
+          case 'Event North America' :
+            usType = true;
+            break;
+
+          case 'France' :
+            usType = false;
+            frType = true;
+            break;
+
+          default:
+            break;
+        }
+      }
+    }
+  }
+
+  $(document).ready(function () {
+    if (!widgetsLoaded()) {
+      onError();
+    } else {
+      var requireFunction = widgetsNamespaced() ? lumesse.require : require;
+      requireFunction([
+        "jquery-noConflict",
+        "underscore-noConflict",
+        "backbone-noConflict",
+        "ApplyCustomerEvents",
+        "ApplyInitializer",
+        "ApplicationFormTemplates",
+        "WidgetsConfiguration",
+        "ApplySupport"
+      ], function ($, _, Backbone, ApplyCustomerEvents, ApplyInitializer, ApplicationFormTemplates, WidgetsConfiguration, ApplySupport) {
+        ApplyCustomerEvents.once(ApplyCustomerEvents.componentLoadingFailed, onError);
+        ApplyCustomerEvents.once(ApplyCustomerEvents.appInitialized, onLoad);
+        ApplyCustomerEvents.once(ApplyCustomerEvents.submissionAccepted, hideMenuOnSubmit);
+
+        (function(){
+          var templatesCount = 0;
+          var templatesLoaded = -1;
+
+          $('script').each(function () {
+            if ($(this).attr('type') === 'text/template') {
+              loadTemplate($(this).data('template'), $(this).attr('src'));
+            }
+          });
+
+          function loadTemplate(templateName, templateUrl) {
+            templatesCount++;
+
+            $.get(templateUrl, function (source) {
+              ApplicationFormTemplates.set(templateName, source);
+            }).always(templateLoadCompleted);
+          }
+
+          function templateLoadCompleted() {
+            templatesLoaded++;
+
+            if (templatesLoaded === templatesCount) {
+              overrideLabels(ApplySupport);
+              ApplyInitializer.bind();
+            }
+          }
+
+          ApplyCustomerEvents.on(ApplyCustomerEvents.appInitialized, function () {
+            $('.confirm-dialog-container').each(function () {
+              $('.tsApplyContainer').append(this);
+            });
+            $('body > .confirm-dialog-container').each(function () {
+              $(this).remove();
+            });
+
+            var langCode = WidgetsConfiguration.langCode();
+            var footerImg = $('.footer-banner');
+
+            if (langCode === 'fr_FR') {
+              footerImg.attr("src", "talentlink/img/1500x500_FR.jpg");
+            } else {
+              footerImg.attr("src", "talentlink/img/1500x500_ENG.jpg");
+            }
+          });
+
+          ApplyCustomerEvents.on(ApplyCustomerEvents.submissionAccepted, function () {
+            var isGa = localStorage.getItem("lumesseGaFr");
+
+            if (isGa === 'true') {
+              var checkExist = setInterval(function () {
+                if ($('.apply-message-submission-success h1').length) {
+                  $('.apply-message-aplication-received').html('<p>Votre profil a bien été enregistré</p>');
+                  localStorage.removeItem('lumesseGaFr');
+                  clearInterval(checkExist);
+                }
+              }, 50);
+            }
+          });
+
+          // call this function in case there are no templates
+          templateLoadCompleted();
+        })();
+      });
+    }
+  });
+})(jQuery);
+;
+(function ($, drupalSettings) {
+  'use strict';
+
+  Drupal.behaviors.lang_dropdown = {
+    attach: function (context, settings) {
+      settings = settings || drupalSettings;
+
+      if (settings.lang_dropdown) {
+        $('.lang-dropdown-select-element').each(function() {
+          var $dropdown = $(this);
+          var key = $dropdown.data('lang-dropdown-id');
+
+          var ldSettings = settings.lang_dropdown[key];
+          var flags = ldSettings.languageicons;
+          if (flags) {
+            $.each(flags, function (index, value) {
+              var option = $dropdown.find('option[value="' + index + '"]');
+              if (ldSettings.widget === 'msdropdown') {
+                option.attr('data-image', value);
+              }
+              else if (ldSettings.widget === 'ddslick' && Boolean(ldSettings.showSelectedHTML)) {
+                option.attr('data-imagesrc', value);
+              }
+            });
+          }
+          if (ldSettings.widget === 'msdropdown') {
+            try {
+              $dropdown.msDropDown({
+                visibleRows: ldSettings.visibleRows,
+                roundedCorner: Boolean(ldSettings.roundedCorner),
+                animStyle: ldSettings.animStyle,
+                event: ldSettings.event,
+                mainCSS: ldSettings.mainCSS
+              });
+            }
+            catch (e) {
+              if (console) {
+                console.log(e);
+              }
+            }
+          }
+          else if (ldSettings.widget === 'chosen') {
+            $dropdown.chosen({
+              disable_search: ldSettings.disable_search,
+              no_results_text: ldSettings.no_results_text
+            });
+          }
+          else if (ldSettings.widget === 'ddslick') {
+            $.data(document.body, 'ddslick' + key + 'flag', 0);
+            $dropdown.ddslick({
+              width: ldSettings.width,
+              height: (ldSettings.height === 0) ? null : ldSettings.height,
+              showSelectedHTML: Boolean(ldSettings.showSelectedHTML),
+              imagePosition: ldSettings.imagePosition,
+              onSelected: function (data, element) {
+                var i = jQuery.data(document.body, 'ddslick' + key + 'flag');
+                if (i) {
+                  $.data(document.body, 'ddslick' + key + 'flag', 0);
+                  data.selectedItem.closest('form').submit()
+                }
+                $.data(document.body, 'ddslick' + key + 'flag', 1);
+              }
+            });
+          }
+        });
+      }
+
+      $('select.lang-dropdown-select-element').change(function () {
+        $(this).closest('form').submit();
+      });
+    }
+  };
+})(jQuery, drupalSettings);
+;
